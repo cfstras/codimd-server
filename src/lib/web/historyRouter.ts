@@ -15,4 +15,7 @@ HistoryRouter.delete('/history', History.historyDelete)
 // delete history by note id
 HistoryRouter.delete('/history/:noteId', History.historyDelete)
 
+// get notes index
+HistoryRouter.get('/index', History.notesIndex)
+
 export { HistoryRouter }

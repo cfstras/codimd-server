@@ -1,6 +1,7 @@
 // history
 // external modules
 import LZString from 'lz-string'
+import { Op } from 'sequelize'
 
 // core
 import { logger } from './logger'
@@ -198,11 +199,47 @@ function historyDelete (req, res): void {
   }
 }
 
+function index (req, res) {
+  // TODO check whether setting is on
+  if (!req.isAuthenticated()) {
+    return errors.errorForbidden(res)
+  }
+  Note.findAll({
+    attributes: [
+      'alias', 'createdAt', 'id', 'lastchangeAt', 'permission', 'shortId',
+      'title', 'viewcount'
+    ],
+    where: {
+      content: {
+        [Op.ne]: ''
+      },
+      [Op.or]: [
+        {
+          permission: { [Op.ne]: 'private' }
+        },
+        {
+          ownerId: req.user.id
+        }
+      ]
+    }
+  }).then(function (notes) {
+    if (!notes) {
+      return errors.errorNotFound(res)
+    }
+    logger.debug(`read index success: ${req.user.id}`)
+    res.send({ index: notes })
+  }).catch(function (err) {
+    logger.error('read index failed: ' + err)
+    return errors.errorInternalError(res)
+  })
+}
+
 const History = {
   historyGet: historyGet,
   historyPost: historyPost,
   historyDelete: historyDelete,
-  updateHistory: updateHistory
+  updateHistory: updateHistory,
+  notesIndex: index
 }
 
 export { History, HistoryObject }

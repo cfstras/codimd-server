@@ -16,6 +16,7 @@ import {
   getStorageHistory,
   parseHistory,
   parseServerToHistory,
+  parseServerToIndex,
   parseStorageToHistory,
   postHistoryToServer,
   removeHistory,
@@ -32,7 +33,7 @@ require('./locale')
 require('../css/cover.css')
 require('../css/site.css')
 
-const options = {
+const historyOptions = {
   valueNames: ['id', 'text', 'timestamp', 'fromNow', 'time', 'tags', 'pinned'],
   item: `<li class="col-xs-12 col-sm-6 col-md-6 col-lg-4">
           <span class="id" style="display:none;"></span>
@@ -58,7 +59,34 @@ const options = {
     outerWindow: 1
   }]
 }
-const historyList = new List('history', options)
+const indexOptions = {
+  valueNames: ['id', 'text', 'timestamp', 'fromNow', 'time', 'tags', 'pinned'],
+  item: `<li class="col-xs-12 col-sm-6 col-md-6 col-lg-4">
+          <span class="id" style="display:none;"></span>
+          <a href="#">
+            <div class="item">
+              <div class="ui-history-pin fa fa-thumb-tack fa-fw"></div>
+              <div class="content">
+                <h4 class="text"></h4>
+                <p class="timestamps">
+                  <i><i class="fa fa-clock-o"></i> visited </i><i class="fromNow"></i>
+                  <br>
+                  <i class="timestamp" style="display:none;"></i>
+                  <i class="time"></i>
+                </p>
+                <p class="tags"></p>
+              </div>
+            </div>
+          </a>
+        </li>`,
+  page: 18,
+  pagination: [{
+    outerWindow: 1
+  }]
+}
+
+const historyList = new List('history', historyOptions)
+const indexList = new List('index', indexOptions)
 
 window.migrateHistoryFromTempCallback = pageInit
 setloginStateChangeEvent(pageInit)
@@ -75,8 +103,10 @@ function pageInit () {
       else $('.ui-avatar').prop('src', '').hide()
       $('.ui-name').html(data.name)
       $('.ui-signout').show()
+      $('.ui-index').show()
       $('.ui-history').click()
       parseServerToHistory(historyList, parseHistoryCallback)
+      parseServerToIndex(indexList, parseIndexCallback)
     },
     () => {
       $('.ui-signin').show()
@@ -85,6 +115,7 @@ function pageInit () {
       $('.ui-avatar').prop('src', '').hide()
       $('.ui-name').html('')
       $('.ui-signout').hide()
+      $('.ui-index').hide()
       parseStorageToHistory(historyList, parseHistoryCallback)
     }
   )
@@ -107,6 +138,13 @@ $('.ui-home').click(function (e) {
   }
 })
 
+$('.ui-index').click(() => {
+  if (!$('#index').is(':visible')) {
+    $('.section:visible').hide()
+    $('#index').fadeIn()
+  }
+})
+
 $('.ui-history').click(() => {
   if (!$('#history').is(':visible')) {
     $('.section:visible').hide()
@@ -119,7 +157,7 @@ function checkHistoryList () {
     $('.pagination').show()
     $('.ui-nohistory').hide()
     $('.ui-import-from-browser').hide()
-  } else if ($('#history-list').children().length === 0) {
+  } else {
     $('.pagination').hide()
     $('.ui-nohistory').slideDown()
     getStorageHistory(data => {
@@ -201,7 +239,88 @@ historyList.on('updated', e => {
   $('.ui-history-close').off('click')
   $('.ui-history-close').on('click', historyCloseClick)
   $('.ui-history-pin').off('click')
-  $('.ui-history-pin').on('click', historyPinClick)
+  $('.ui-history-pin').on('click', historyPinClick, historyList)
+})
+
+function checkIndexList () {
+  if ($('#index-list').children().length > 0) {
+    $('.pagination').show()
+    $('.ui-noindex').hide()
+  } else {
+    $('.pagination').hide()
+    $('.ui-noindex').slideDown()
+  }
+}
+
+function parseIndexCallback (list, noteindex) {
+  checkIndexList()
+  // sort by pinned then timestamp
+  list.sort('', {
+    sortFunction (a, b) {
+      const notea = a.values()
+      const noteb = b.values()
+      if (notea.pinned && !noteb.pinned) {
+        return -1
+      } else if (!notea.pinned && noteb.pinned) {
+        return 1
+      } else {
+        if (notea.timestamp > noteb.timestamp) {
+          return -1
+        } else if (notea.timestamp < noteb.timestamp) {
+          return 1
+        } else {
+          return 0
+        }
+      }
+    }
+  })
+  // parse filter tags
+  const filtertags = []
+  for (let i = 0, l = list.items.length; i < l; i++) {
+    const tags = list.items[i]._values.tags
+    if (tags && tags.length > 0) {
+      for (let j = 0; j < tags.length; j++) {
+        // push info filtertags if not found
+        let found = false
+        if (filtertags.includes(tags[j])) { found = true }
+        if (!found) { filtertags.push(tags[j]) }
+      }
+    }
+  }
+  buildTagsFilter(filtertags)
+}
+
+indexList.on('updated', e => {
+  for (let i = 0, l = e.items.length; i < l; i++) {
+    const item = e.items[i]
+    if (item.visible()) {
+      const itemEl = $(item.elm)
+      const values = item._values
+      const a = itemEl.find('a')
+      const pin = itemEl.find('.ui-history-pin')
+      const tagsEl = itemEl.find('.tags')
+      // parse link to element a
+      a.attr('href', `${serverurl}/${values.id}`)
+      // parse pinned
+      if (values.pinned) {
+        pin.addClass('active')
+      } else {
+        pin.removeClass('active')
+      }
+      // parse tags TODO fill tags in backend...
+      const tags = values.tags
+      if (tags && tags.length > 0 && tagsEl.children().length <= 0) {
+        const labels = []
+        for (let j = 0; j < tags.length; j++) {
+          // push into the item label
+          labels.push(`<span class='label label-default'>${tags[j]}</span>`)
+        }
+        tagsEl.html(labels.join(' '))
+      }
+    }
+  }
+  $('.ui-history-pin').off('click')
+  $('.ui-history-pin').on('click', historyPinClick, indexList)
 })
 
 function historyCloseClick (e) {
@@ -218,7 +337,7 @@ function historyPinClick (e) {
   e.preventDefault()
   const $this = $(this)
   const id = $this.closest('a').siblings('span').html()
-  const item = historyList.get('id', id)[0]
+  const item = e.data.get('id', id)[0]
   const values = item._values
   let pinned = values.pinned
   if (!values.pinned) {
@@ -371,6 +490,10 @@ $('.ui-refresh-history').click(() => {
   })
 })
 
+$('.ui-refresh-index').click(() => {
+  // TODO
+})
+
 $('.ui-delete-user-modal-cancel').click(() => {
   $('.ui-delete-user').parent().removeClass('active')
 })
@@ -423,10 +546,12 @@ $('.ui-use-tags').on('change', function () {
     historyList.filter()
   }
   checkHistoryList()
+  checkIndexList()
 })
 
 $('.search').keyup(() => {
   checkHistoryList()
+  checkIndexList()
 })
 
 // focus user field after opening login modal

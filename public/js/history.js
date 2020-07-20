@@ -305,3 +305,45 @@ export function deleteServerHistory (noteId, callback) {
       return callback(error, null)
     })
 }
+
+function parseToIndex (list, notehistory, callback) {
+  if (!callback) return
+  else if (!list || !notehistory) callback(list, notehistory)
+  else if (notehistory && notehistory.length > 0) {
+    for (let i = 0; i < notehistory.length; i++) {
+      // migrate LZString encoded id to base64url encoded id
+      try {
+        let id = LZString.decompressFromBase64(notehistory[i].id)
+        if (id && checkNoteIdValid(id)) {
+          notehistory[i].id = encodeNoteId(id)
+        }
+      } catch (err) {
+        console.error(err)
+      }
+      // parse time to timestamp and fromNow
+      const timestamp = moment(notehistory[i].lastchangeAt)
+      notehistory[i].timestamp = timestamp.valueOf()
+      notehistory[i].fromNow = timestamp.fromNow()
+      notehistory[i].time = timestamp.format('llll')
+      // prevent XSS
+      notehistory[i].text = S(notehistory[i].title).escapeHTML().s
+      // TODO fill tags from DB?
+      notehistory[i].tags = (notehistory[i].tags && notehistory[i].tags.length > 0) ? S(notehistory[i].tags).escapeHTML().s.split(',') : []
+      // add to list
+      if (notehistory[i].id && list.get('id', notehistory[i].id).length === 0) { list.add(notehistory[i]) }
+    }
+  }
+  callback(list, notehistory)
+}
+
+export function parseServerToIndex (list, callback) {
+  $.get(`${serverurl}/index`)
+    .done(data => {
+      if (data.index) {
+        parseToIndex(list, data.index, callback)
+      }
+    })
+    .fail((xhr, status, error) => {
+      console.error(xhr.responseText)
+    })
+}
